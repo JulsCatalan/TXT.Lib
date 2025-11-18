@@ -1,0 +1,216 @@
+-- ==========================================
+-- RESET COMPLETO DEL SCHEMA PUBLIC
+-- ==========================================
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
+-- Otorgar todos los permisos al rol service_role
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+-- También para anon y authenticated (opcional, pero recomendado)
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+
+-- Actualizar permisos automáticos para futuras tablas
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO service_role;
+
+
+-- ==========================================
+-- EXTENSIONES
+-- ==========================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ==========================================
+-- META TABLE
+-- ==========================================
+CREATE TABLE system_metadata (
+    id SERIAL PRIMARY KEY,
+    script_version TEXT NOT NULL,
+    installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO system_metadata (script_version) VALUES ('v1.0-clean');
+
+-- ==========================================
+-- HEALTH CHECK
+-- ==========================================
+CREATE TABLE health_check (
+    id SERIAL PRIMARY KEY,
+    status TEXT DEFAULT 'ok',
+    checked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO health_check (status) VALUES ('ok');
+
+-- ==========================================
+-- USERS
+-- ==========================================
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    phone_number VARCHAR(20) UNIQUE,
+    whatsapp_number VARCHAR(20),
+    whatsapp_verified BOOLEAN DEFAULT FALSE,
+    whatsapp_notifications_enabled BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_phone ON users(phone_number);
+
+-- ==========================================
+-- TEXTS
+-- ==========================================
+CREATE TABLE texts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    audio_url TEXT,
+    audio_generated BOOLEAN DEFAULT FALSE,
+    audio_duration INTEGER,
+    play_count INTEGER DEFAULT 0,
+    word_count INTEGER,
+    category VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_texts_user_id ON texts(user_id);
+CREATE INDEX idx_texts_category ON texts(category);
+CREATE INDEX idx_texts_created_at ON texts(created_at DESC);
+CREATE INDEX idx_texts_play_count ON texts(play_count DESC);
+
+-- ==========================================
+-- SHARED_TEXTS
+-- ==========================================
+CREATE TABLE shared_texts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
+    shared_with_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shared_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    can_edit BOOLEAN DEFAULT FALSE,
+    shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(text_id, shared_with_user_id)
+);
+
+CREATE INDEX idx_shared_texts_shared_with ON shared_texts(shared_with_user_id);
+CREATE INDEX idx_shared_texts_text_id ON shared_texts(text_id);
+CREATE INDEX idx_shared_texts_shared_by ON shared_texts(shared_by_user_id);
+
+-- ==========================================
+-- AUDIO_PLAYS
+-- ==========================================
+CREATE TABLE audio_plays (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    play_duration INTEGER,
+    played_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audio_plays_text_id ON audio_plays(text_id);
+CREATE INDEX idx_audio_plays_user_id ON audio_plays(user_id);
+CREATE INDEX idx_audio_plays_played_at ON audio_plays(played_at DESC);
+
+-- ==========================================
+-- FAVORITES
+-- ==========================================
+CREATE TABLE favorites (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(text_id, user_id)
+);
+
+CREATE INDEX idx_favorites_user_id ON favorites(user_id);
+CREATE INDEX idx_favorites_text_id ON favorites(text_id);
+
+-- ==========================================
+-- WHATSAPP_MESSAGES
+-- ==========================================
+CREATE TABLE whatsapp_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    text_id UUID REFERENCES texts(id) ON DELETE SET NULL,
+    message_type VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    kapso_message_id VARCHAR(255),
+    error_message TEXT,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    read_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_whatsapp_messages_user_id ON whatsapp_messages(user_id);
+CREATE INDEX idx_whatsapp_messages_status ON whatsapp_messages(status);
+CREATE INDEX idx_whatsapp_messages_sent_at ON whatsapp_messages(sent_at DESC);
+CREATE INDEX idx_whatsapp_messages_message_type ON whatsapp_messages(message_type);
+
+-- ==========================================
+-- WHATSAPP_VERIFICATION_CODES
+-- ==========================================
+CREATE TABLE whatsapp_verification_codes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code VARCHAR(6) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    verified BOOLEAN DEFAULT FALSE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_verification_codes_user_id ON whatsapp_verification_codes(user_id);
+CREATE INDEX idx_verification_codes_expires_at ON whatsapp_verification_codes(expires_at);
+
+-- ==========================================
+-- ENABLE RLS
+-- ==========================================
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE texts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shared_texts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audio_plays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whatsapp_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whatsapp_verification_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE health_check ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================
+-- BASIC POLICIES
+-- ==========================================
+
+CREATE POLICY "Users read themselves"
+ON users FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users manage their texts"
+ON texts FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+-- Eliminar la tabla y recrearla sin RLS
+DROP TABLE IF EXISTS health_check;
+
+CREATE TABLE health_check (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status VARCHAR(50) DEFAULT 'active',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insertar registro inicial
+INSERT INTO health_check (status) VALUES ('active');
+
+-- Asegurarse que RLS está desactivado
+ALTER TABLE health_check DISABLE ROW LEVEL SECURITY;
+
+-- Dar permisos explícitos
+GRANT ALL ON health_check TO anon;
+GRANT ALL ON health_check TO authenticated;
+GRANT ALL ON health_check TO service_role;
