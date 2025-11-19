@@ -29,12 +29,18 @@ const buildpath = path.join(__dirname, "../client/out");
 app.use(express.static(buildpath));
 
 // CORS configuración
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+if (process.env.NODE_ENV !== 'development') {
+  allowedOrigins.push('https://txt-lib.onrender.com');
+}
+
 app.use(
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000'
-    ],
+    origin: allowedOrigins,
     credentials: true,
   })
 );
