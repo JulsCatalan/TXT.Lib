@@ -6,7 +6,6 @@ import usersRoutes from './users.routes.js'
 import favoriteRoutes from './favorites.routes.js'
 import analyticsRoutes from './analytics.routes.js'
 import whatsappRoutes from './whatsapp.routes.js'
-import recommendationsRoutes from'./recommendations.routes.js';
 
 const router = Router();
 
@@ -32,6 +31,6 @@ router.use('/analytics', analyticsRoutes);
 router.use('/whatsapp', whatsappRoutes);
 
 //Rutas para recomendaciones
-router.use('/recommendations', recommendationsRoutes);
+// router.use('/recommendations', recommendationsRoutes);
 
 export default router;
