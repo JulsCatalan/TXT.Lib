@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Trash2, Share2, Edit, Download, Volume2, RefreshCw, AlertCircle, MessageCircle, StarOff, Star } from 'lucide-react';
 import { Text } from '../types';
 import { deleteText, addFavorite, removeFavorite, checkFavorite } from '../utils/api';
+import { trackPlayStart, updatePlaySession, trackAudioDownload } from '../utils/api';
 import ShareTextModal from './ShareTextModal';
 import EditTextModal from './EditTextModal';
 import GenerateAudioModal from './GenerateAudioModal';
@@ -26,7 +27,13 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   const [duration, setDuration] = useState(0);
   const [audioKey, setAudioKey] = useState(Date.now());
   const [audioError, setAudioError] = useState(false);
+  
+  // Analytics tracking
+  const [playSessionId, setPlaySessionId] = useState<string | null>(null);
+  const [lastTrackedTime, setLastTrackedTime] = useState(0);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Inicializar audio
   useEffect(() => {
@@ -34,9 +41,17 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
       audioRef.current = new Audio();
 
       audioRef.current.addEventListener('timeupdate', () => setCurrentTime(audioRef.current?.currentTime || 0));
-      audioRef.current.addEventListener('loadedmetadata', () => { setDuration(audioRef.current?.duration || 0); setAudioError(false); });
-      audioRef.current.addEventListener('ended', () => { setIsPlaying(false); setCurrentTime(0); });
-      audioRef.current.addEventListener('error', () => { if (localText.audio_url) { setAudioError(true); setIsPlaying(false); } });
+      audioRef.current.addEventListener('loadedmetadata', () => { 
+        setDuration(audioRef.current?.duration || 0); 
+        setAudioError(false); 
+      });
+      audioRef.current.addEventListener('ended', handleAudioEnded);
+      audioRef.current.addEventListener('error', () => { 
+        if (localText.audio_url) { 
+          setAudioError(true); 
+          setIsPlaying(false); 
+        } 
+      });
       audioRef.current.addEventListener('canplay', () => setAudioError(false));
     }
 
@@ -45,13 +60,16 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
+      if (trackingIntervalRef.current) {
+        clearInterval(trackingIntervalRef.current);
+      }
     };
   }, [localText.audio_url]);
 
   // Cargar src de audio cuando cambia
   useEffect(() => {
     if (audioRef.current && localText.audio_url) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
       const newSrc = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -77,12 +95,77 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
     checkIfFavorite();
   }, [localText.id]);
 
-  const handlePlayPause = () => {
-    if (!audioRef.current || !localText.audio_url || audioError) return;
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(err => { console.warn(err); setAudioError(true); setIsPlaying(false); });
+  // ===== ANALYTICS: Tracking de reproducción =====
+  const startPlayTracking = async () => {
+    try {
+      const response = await trackPlayStart(localText.id);
+      setPlaySessionId(response.session_id);
+      setLastTrackedTime(0);
+      
+      // Trackear progreso cada 10 segundos
+      trackingIntervalRef.current = setInterval(() => {
+        if (audioRef.current && playSessionId) {
+          const currentDuration = audioRef.current.currentTime;
+          updatePlayTracking(currentDuration, false);
+        }
+      }, 10000); // Cada 10 segundos
+    } catch (err) {
+      console.error('Error iniciando tracking:', err);
     }
+  };
+
+  const updatePlayTracking = async (durationPlayed: number, completed: boolean) => {
+    if (!playSessionId) return;
+    
+    try {
+      // Solo actualizar si hay cambio significativo (>1 segundo)
+      if (Math.abs(durationPlayed - lastTrackedTime) > 1 || completed) {
+        await updatePlaySession(playSessionId, durationPlayed, completed);
+        setLastTrackedTime(durationPlayed);
+      }
+    } catch (err) {
+      console.error('Error actualizando tracking:', err);
+    }
+  };
+
+  const stopPlayTracking = async (completed: boolean = false) => {
+    if (trackingIntervalRef.current) {
+      clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
+    }
+    
+    if (audioRef.current && playSessionId) {
+      const finalDuration = audioRef.current.currentTime;
+      await updatePlayTracking(finalDuration, completed);
+      setPlaySessionId(null);
+    }
+  };
+
+  // ===== Handlers de audio con tracking =====
+  const handlePlayPause = async () => {
+    if (!audioRef.current || !localText.audio_url || audioError) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      await stopPlayTracking(false);
+    } else {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+        await startPlayTracking();
+      } catch (err) {
+        console.warn(err);
+        setAudioError(true);
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  const handleAudioEnded = async () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    await stopPlayTracking(true); // Marcado como completado
   };
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -94,9 +177,17 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
     setCurrentTime(newTime);
   };
 
-  const handleDownloadAudio = () => {
+  const handleDownloadAudio = async () => {
     if (!localText.audio_url) return;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+    
+    // Trackear descarga
+    try {
+      await trackAudioDownload(localText.id);
+    } catch (err) {
+      console.error('Error trackeando descarga:', err);
+    }
+    
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
     const link = document.createElement('a');
     link.href = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
     link.download = `${localText.title}.mp3`;
@@ -105,12 +196,26 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
 
   const handleDelete = async () => {
     if (!confirm('¿Estás seguro de eliminar este texto?')) return;
-    try { await deleteText(localText.id); onUpdated(); } 
-    catch (err) { console.error(err); alert('Error al eliminar texto'); }
+    try { 
+      // Detener tracking si está reproduciendo
+      if (isPlaying) {
+        await stopPlayTracking(false);
+      }
+      await deleteText(localText.id); 
+      onUpdated(); 
+    } catch (err) { 
+      console.error(err); 
+      alert('Error al eliminar texto'); 
+    }
   };
 
   const handleAudioGenerated = (audioUrl: string) => {
-    if (audioRef.current) audioRef.current.pause();
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    if (isPlaying) {
+      stopPlayTracking(false);
+    }
     setIsPlaying(false);
     setAudioKey(Date.now());
     setLocalText({ ...localText, audio_url: audioUrl, audio_generated: true });
@@ -129,7 +234,9 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
       if (isFavorite) await removeFavorite(localText.id);
       else await addFavorite(localText.id);
       setIsFavorite(!isFavorite);
-    } catch (err) { console.error('Error al actualizar favorito:', err); }
+    } catch (err) { 
+      console.error('Error al actualizar favorito:', err); 
+    }
   };
 
   const formatTime = (time: number) => {
@@ -151,13 +258,41 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
             {localText.category && <span className="text-xs text-gray-600">{localText.category}</span>}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={toggleFavorite} className="p-2 hover:bg-gray-900 rounded-lg transition" title={isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}>
+            <button 
+              onClick={toggleFavorite} 
+              className="p-2 hover:bg-gray-900 rounded-lg transition" 
+              title={isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}
+            >
               {isFavorite ? <Star className="w-4 h-4 text-yellow-400"/> : <StarOff className="w-4 h-4 text-gray-400"/>}
             </button>
-            <button onClick={() => setShowEditModal(true)} className="p-2 hover:bg-gray-900 rounded-lg transition" title="Editar"><Edit className="w-4 h-4 text-gray-400"/></button>
-            <button onClick={() => setShowShareModal(true)} className="p-2 hover:bg-gray-900 rounded-lg transition" title="Compartir"><Share2 className="w-4 h-4 text-gray-400"/></button>
-            <button onClick={() => setShowWhatsAppModal(true)} className="p-2 hover:bg-gray-900 rounded-lg transition" title="Compartir por WhatsApp"><MessageCircle className="w-4 h-4 text-gray-400"/></button>
-            <button onClick={handleDelete} className="p-2 hover:bg-gray-900 rounded-lg transition" title="Eliminar"><Trash2 className="w-4 h-4 text-gray-400"/></button>
+            <button 
+              onClick={() => setShowEditModal(true)} 
+              className="p-2 hover:bg-gray-900 rounded-lg transition" 
+              title="Editar"
+            >
+              <Edit className="w-4 h-4 text-gray-400"/>
+            </button>
+            <button 
+              onClick={() => setShowShareModal(true)} 
+              className="p-2 hover:bg-gray-900 rounded-lg transition" 
+              title="Compartir"
+            >
+              <Share2 className="w-4 h-4 text-gray-400"/>
+            </button>
+            <button 
+              onClick={() => setShowWhatsAppModal(true)} 
+              className="p-2 hover:bg-gray-900 rounded-lg transition" 
+              title="Compartir por WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4 text-gray-400"/>
+            </button>
+            <button 
+              onClick={handleDelete} 
+              className="p-2 hover:bg-gray-900 rounded-lg transition" 
+              title="Eliminar"
+            >
+              <Trash2 className="w-4 h-4 text-gray-400"/>
+            </button>
           </div>
         </div>
 
@@ -167,7 +302,12 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
         {/* Stats */}
         <div className="flex items-center gap-4 text-xs text-gray-700">
           <span>{localText.word_count} palabras</span>
-          {localText.audio_generated && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>Audio generado</span>}
+          {localText.audio_generated && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+              Audio generado
+            </span>
+          )}
         </div>
 
         {localText.audio_url && hasContentChanged && (
@@ -187,28 +327,70 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
                 </div>
               )}
               <div className="flex gap-2">
-                <button onClick={handlePlayPause} disabled={audioError} className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition text-sm ${audioError ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200'}`}>
-                  {isPlaying ? <><Pause className="w-4 h-4"/>Pausar</> : <><Play className="w-4 h-4"/>Reproducir</>}
+                <button 
+                  onClick={handlePlayPause} 
+                  disabled={audioError} 
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition text-sm ${
+                    audioError 
+                      ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
+                      : 'bg-white text-black hover:bg-gray-200'
+                  }`}
+                >
+                  {isPlaying ? (
+                    <>
+                      <Pause className="w-4 h-4"/>
+                      Pausar
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4"/>
+                      Reproducir
+                    </>
+                  )}
                 </button>
-                <button onClick={handleDownloadAudio} disabled={audioError} className={`px-4 py-2.5 border rounded-lg transition ${audioError ? 'border-gray-800 text-gray-600 cursor-not-allowed' : 'border-gray-900 hover:bg-gray-900'}`} title="Descargar audio">
+                <button 
+                  onClick={handleDownloadAudio} 
+                  disabled={audioError} 
+                  className={`px-4 py-2.5 border rounded-lg transition ${
+                    audioError 
+                      ? 'border-gray-800 text-gray-600 cursor-not-allowed' 
+                      : 'border-gray-900 hover:bg-gray-900'
+                  }`} 
+                  title="Descargar audio"
+                >
                   <Download className="w-4 h-4"/>
                 </button>
               </div>
               {duration > 0 && !audioError && (
                 <div className="space-y-1">
-                  <div className="h-1.5 bg-gray-900 rounded-full cursor-pointer overflow-hidden" onClick={handleTimelineClick}>
-                    <div className="h-full bg-linear-to-r from-blue-500 to-purple-600 transition-all" style={{width:`${progress}%`}}/>
+                  <div 
+                    className="h-1.5 bg-gray-900 rounded-full cursor-pointer overflow-hidden" 
+                    onClick={handleTimelineClick}
+                  >
+                    <div 
+                      className="h-full bg-linear-to-r from-blue-500 to-purple-600 transition-all" 
+                      style={{width:`${progress}%`}}
+                    />
                   </div>
-                  <div className="flex justify-between text-xs text-gray-600"><span>{formatTime(currentTime)}</span><span>{formatTime(duration)}</span></div>
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
                 </div>
               )}
-              <button onClick={() => setShowGenerateModal(true)} className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm text-gray-400">
+              <button 
+                onClick={() => setShowGenerateModal(true)} 
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm text-gray-400"
+              >
                 <RefreshCw className="w-3.5 h-3.5"/>
                 Regenerar Audio
               </button>
             </>
           ) : (
-            <button onClick={() => setShowGenerateModal(true)} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm">
+            <button 
+              onClick={() => setShowGenerateModal(true)} 
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
+            >
               <Volume2 className="w-4 h-4"/>
               Generar Audio
             </button>
@@ -216,10 +398,38 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
         </div>
       </div>
 
-      {showShareModal && <ShareTextModal textId={localText.id} textTitle={localText.title} onClose={() => setShowShareModal(false)}/>}
-      {showEditModal && <EditTextModal text={localText} onClose={() => setShowEditModal(false)} onUpdated={handleTextUpdated}/>}
-      {showWhatsAppModal && <ShareWhatsAppModal textId={localText.id} textTitle={localText.title} onClose={() => setShowWhatsAppModal(false)}/>}
-      {showGenerateModal && <GenerateAudioModal textId={localText.id} textTitle={localText.title} hasExistingAudio={!!localText.audio_url} onClose={() => setShowGenerateModal(false)} onGenerated={handleAudioGenerated}/>}
+      {showShareModal && (
+        <ShareTextModal 
+          textId={localText.id} 
+          textTitle={localText.title} 
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
+      {showEditModal && (
+        <EditTextModal 
+          text={localText} 
+          onClose={() => setShowEditModal(false)} 
+          onUpdated={handleTextUpdated}
+        />
+      )}
+      {showWhatsAppModal && (
+        <ShareWhatsAppModal 
+          textId={localText.id} 
+          textTitle={localText.title}
+          hasAudio={localText.audio_generated || !!localText.audio_url}
+          onClose={() => setShowWhatsAppModal(false)}
+
+        />
+      )}
+      {showGenerateModal && (
+        <GenerateAudioModal 
+          textId={localText.id} 
+          textTitle={localText.title} 
+          hasExistingAudio={!!localText.audio_url} 
+          onClose={() => setShowGenerateModal(false)} 
+          onGenerated={handleAudioGenerated}
+        />
+      )}
     </>
   );
 }

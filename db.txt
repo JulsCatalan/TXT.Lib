@@ -6,24 +6,21 @@ CREATE SCHEMA public;
 GRANT ALL ON SCHEMA public TO postgres;
 GRANT ALL ON SCHEMA public TO public;
 
--- Otorgar todos los permisos al rol service_role
-GRANT USAGE ON SCHEMA public TO service_role;
+-- Otorgar permisos generales
+GRANT USAGE ON SCHEMA public TO service_role, anon, authenticated;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
-
--- También para anon y authenticated (opcional, pero recomendado)
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 
--- Actualizar permisos automáticos para futuras tablas
+-- Permisos por defecto para nuevas tablas
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO service_role;
-
 
 -- ==========================================
 -- EXTENSIONES
 -- ==========================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==========================================
 -- META TABLE
@@ -31,21 +28,10 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE system_metadata (
     id SERIAL PRIMARY KEY,
     script_version TEXT NOT NULL,
-    installed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    installed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO system_metadata (script_version) VALUES ('v1.0-clean');
-
--- ==========================================
--- HEALTH CHECK
--- ==========================================
-CREATE TABLE health_check (
-    id SERIAL PRIMARY KEY,
-    status TEXT DEFAULT 'ok',
-    checked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO health_check (status) VALUES ('ok');
+INSERT INTO system_metadata (script_version) VALUES ('v1.1-analytics');
 
 -- ==========================================
 -- USERS
@@ -59,7 +45,7 @@ CREATE TABLE users (
     whatsapp_number VARCHAR(20),
     whatsapp_verified BOOLEAN DEFAULT FALSE,
     whatsapp_notifications_enabled BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_users_username ON users(username);
@@ -80,7 +66,7 @@ CREATE TABLE texts (
     play_count INTEGER DEFAULT 0,
     word_count INTEGER,
     category VARCHAR(100),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_texts_user_id ON texts(user_id);
@@ -97,28 +83,13 @@ CREATE TABLE shared_texts (
     shared_with_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     shared_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     can_edit BOOLEAN DEFAULT FALSE,
-    shared_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(text_id, shared_with_user_id)
+    shared_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (text_id, shared_with_user_id)
 );
 
 CREATE INDEX idx_shared_texts_shared_with ON shared_texts(shared_with_user_id);
 CREATE INDEX idx_shared_texts_text_id ON shared_texts(text_id);
 CREATE INDEX idx_shared_texts_shared_by ON shared_texts(shared_by_user_id);
-
--- ==========================================
--- AUDIO_PLAYS
--- ==========================================
-CREATE TABLE audio_plays (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    play_duration INTEGER,
-    played_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_audio_plays_text_id ON audio_plays(text_id);
-CREATE INDEX idx_audio_plays_user_id ON audio_plays(user_id);
-CREATE INDEX idx_audio_plays_played_at ON audio_plays(played_at DESC);
 
 -- ==========================================
 -- FAVORITES
@@ -127,7 +98,7 @@ CREATE TABLE favorites (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(text_id, user_id)
 );
 
@@ -135,82 +106,201 @@ CREATE INDEX idx_favorites_user_id ON favorites(user_id);
 CREATE INDEX idx_favorites_text_id ON favorites(text_id);
 
 -- ==========================================
--- WHATSAPP_MESSAGES
+-- AUDIO_ANALYTICS (Tabla principal de tracking)
 -- ==========================================
-CREATE TABLE whatsapp_messages (
+CREATE TABLE audio_analytics (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    text_id UUID NOT NULL REFERENCES texts(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    played_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    duration_played INTEGER DEFAULT 0,
+    completed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audio_analytics_text_id ON audio_analytics(text_id);
+CREATE INDEX idx_audio_analytics_user_id ON audio_analytics(user_id);
+CREATE INDEX idx_audio_analytics_played_at ON audio_analytics(played_at DESC);
+CREATE INDEX idx_audio_analytics_text_user ON audio_analytics(text_id, user_id);
+
+COMMENT ON TABLE audio_analytics IS 'Tracking de reproducciones de audio. duration_played = -1 indica descarga';
+
+-- ==========================================
+-- WHATSAPP CONFIG
+-- ==========================================
+CREATE TABLE whatsapp_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+    phone_number VARCHAR(20) NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    verification_code VARCHAR(6),
+    code_expires_at TIMESTAMPTZ,
+    notifications_enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_whatsapp_config_user_id ON whatsapp_config(user_id);
+CREATE INDEX idx_whatsapp_config_phone ON whatsapp_config(phone_number);
+
+-- ==========================================
+-- WHATSAPP NOTIFICATIONS
+-- ==========================================
+CREATE TABLE whatsapp_notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    to_phone VARCHAR(20) NOT NULL,
     text_id UUID REFERENCES texts(id) ON DELETE SET NULL,
     message_type VARCHAR(50) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending',
-    kapso_message_id VARCHAR(255),
-    error_message TEXT,
-    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    delivered_at TIMESTAMP WITH TIME ZONE,
-    read_at TIMESTAMP WITH TIME ZONE
+    message_content TEXT,
+    sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'pending'
 );
 
-CREATE INDEX idx_whatsapp_messages_user_id ON whatsapp_messages(user_id);
-CREATE INDEX idx_whatsapp_messages_status ON whatsapp_messages(status);
-CREATE INDEX idx_whatsapp_messages_sent_at ON whatsapp_messages(sent_at DESC);
-CREATE INDEX idx_whatsapp_messages_message_type ON whatsapp_messages(message_type);
+CREATE INDEX idx_whatsapp_notif_from_user ON whatsapp_notifications(from_user_id);
+CREATE INDEX idx_whatsapp_notif_to_phone ON whatsapp_notifications(to_phone);
+CREATE INDEX idx_whatsapp_notif_sent_at ON whatsapp_notifications(sent_at DESC);
 
 -- ==========================================
--- WHATSAPP_VERIFICATION_CODES
+-- HEALTH CHECK (sin RLS para monitoring)
 -- ==========================================
-CREATE TABLE whatsapp_verification_codes (
+CREATE TABLE health_check (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    code VARCHAR(6) NOT NULL,
-    phone_number VARCHAR(20) NOT NULL,
-    verified BOOLEAN DEFAULT FALSE,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    status VARCHAR(50) DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_verification_codes_user_id ON whatsapp_verification_codes(user_id);
-CREATE INDEX idx_verification_codes_expires_at ON whatsapp_verification_codes(expires_at);
+INSERT INTO health_check (status) VALUES ('active');
+
+ALTER TABLE health_check DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON health_check TO anon, authenticated, service_role;
 
 -- ==========================================
--- ENABLE RLS
+-- RLS (Row Level Security)
 -- ==========================================
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE texts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shared_texts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audio_plays ENABLE ROW LEVEL SECURITY;
 ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE whatsapp_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE whatsapp_verification_codes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE health_check ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audio_analytics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whatsapp_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whatsapp_notifications ENABLE ROW LEVEL SECURITY;
+
+-- Policies básicas
+CREATE POLICY "Users read themselves" ON users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users manage their texts" ON texts FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ==========================================
--- BASIC POLICIES
+-- FUNCIONES Y TRIGGERS
 -- ==========================================
 
-CREATE POLICY "Users read themselves"
-ON users FOR SELECT USING (auth.uid() = id);
+-- Función para incrementar play_count de manera atómica
+CREATE OR REPLACE FUNCTION increment_play_count(text_uuid UUID)
+RETURNS void AS $$
+BEGIN
+    UPDATE texts SET play_count = play_count + 1 WHERE id = text_uuid;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE POLICY "Users manage their texts"
-ON texts FOR ALL
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+GRANT EXECUTE ON FUNCTION increment_play_count TO authenticated, service_role;
+COMMENT ON FUNCTION increment_play_count IS 'Incrementa contador de reproducciones de manera atómica';
 
--- Eliminar la tabla y recrearla sin RLS
-DROP TABLE IF EXISTS health_check;
+-- Trigger para actualizar play_count automáticamente
+CREATE OR REPLACE FUNCTION update_text_play_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Solo contar reproducciones reales (duration_played >= 0)
+    -- Las descargas tienen duration_played = -1 y no se cuentan
+    IF NEW.duration_played >= 0 THEN
+        UPDATE texts
+        SET play_count = (
+            SELECT COUNT(*) 
+            FROM audio_analytics 
+            WHERE text_id = NEW.text_id 
+            AND duration_played >= 0
+        )
+        WHERE id = NEW.text_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE TABLE health_check (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  status VARCHAR(50) DEFAULT 'active',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+CREATE TRIGGER trigger_update_play_count
+    AFTER INSERT ON audio_analytics
+    FOR EACH ROW
+    EXECUTE FUNCTION update_text_play_count();
 
--- Insertar registro inicial
-INSERT INTO health_check (status) VALUES ('active');
+COMMENT ON FUNCTION update_text_play_count IS 'Actualiza play_count en texts cuando se registra reproducción';
 
--- Asegurarse que RLS está desactivado
-ALTER TABLE health_check DISABLE ROW LEVEL SECURITY;
+-- Función para obtener estadísticas del mes actual
+CREATE OR REPLACE FUNCTION get_current_month_stats(p_user_id UUID)
+RETURNS TABLE (
+    texts_created INTEGER,
+    audios_generated INTEGER,
+    total_plays INTEGER,
+    total_shares INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        COUNT(DISTINCT t.id)::INTEGER as texts_created,
+        COUNT(DISTINCT CASE WHEN t.audio_generated THEN t.id END)::INTEGER as audios_generated,
+        COUNT(DISTINCT aa.id)::INTEGER as total_plays,
+        COUNT(DISTINCT st.id)::INTEGER as total_shares
+    FROM texts t
+    LEFT JOIN audio_analytics aa ON aa.text_id = t.id AND aa.user_id = p_user_id
+    LEFT JOIN shared_texts st ON st.text_id = t.id AND st.shared_by_user_id = p_user_id
+    WHERE t.user_id = p_user_id
+    AND t.created_at >= date_trunc('month', CURRENT_TIMESTAMP);
+END;
+$$ LANGUAGE plpgsql;
 
--- Dar permisos explícitos
-GRANT ALL ON health_check TO anon;
-GRANT ALL ON health_check TO authenticated;
-GRANT ALL ON health_check TO service_role;
+GRANT EXECUTE ON FUNCTION get_current_month_stats TO authenticated;
+COMMENT ON FUNCTION get_current_month_stats IS 'Retorna estadísticas del mes actual para un usuario';
+
+-- ==========================================
+-- VISTA OPTIMIZADA PARA ANALYTICS
+-- ==========================================
+CREATE OR REPLACE VIEW user_text_stats AS
+SELECT 
+    t.user_id,
+    t.id as text_id,
+    t.title,
+    t.category,
+    t.created_at,
+    t.audio_generated,
+    t.word_count,
+    COUNT(DISTINCT aa.id) FILTER (WHERE aa.duration_played >= 0) as play_count,
+    COUNT(DISTINCT f.id) as favorite_count,
+    COUNT(DISTINCT st.id) as share_count,
+    SUM(CASE WHEN aa.completed THEN 1 ELSE 0 END) as completed_plays,
+    SUM(aa.duration_played) FILTER (WHERE aa.duration_played >= 0) as total_listen_time
+FROM texts t
+LEFT JOIN audio_analytics aa ON aa.text_id = t.id
+LEFT JOIN favorites f ON f.text_id = t.id
+LEFT JOIN shared_texts st ON st.text_id = t.id
+GROUP BY t.id, t.user_id, t.title, t.category, t.created_at, t.audio_generated, t.word_count;
+
+GRANT SELECT ON user_text_stats TO authenticated;
+COMMENT ON VIEW user_text_stats IS 'Vista consolidada de estadísticas por texto';
+
+-- ==========================================
+-- ÍNDICES ADICIONALES PARA PERFORMANCE
+-- ==========================================
+CREATE INDEX IF NOT EXISTS idx_audio_analytics_duration ON audio_analytics(duration_played) WHERE duration_played >= 0;
+CREATE INDEX IF NOT EXISTS idx_audio_analytics_completed ON audio_analytics(completed) WHERE completed = true;
+
+-- ==========================================
+-- COMENTARIOS PARA DOCUMENTACIÓN
+-- ==========================================
+COMMENT ON TABLE users IS 'Usuarios de la plataforma';
+COMMENT ON TABLE texts IS 'Textos creados por usuarios';
+COMMENT ON TABLE shared_texts IS 'Relación de textos compartidos entre usuarios';
+COMMENT ON TABLE favorites IS 'Textos marcados como favoritos';
+COMMENT ON TABLE audio_analytics IS 'Tracking detallado de reproducciones de audio';
+COMMENT ON TABLE whatsapp_config IS 'Configuración de WhatsApp por usuario';
+COMMENT ON TABLE whatsapp_notifications IS 'Historial de notificaciones de WhatsApp enviadas';
+
+-- ==========================================
+-- FIN DEL SCRIPT
+-- ==========================================

@@ -1,6 +1,6 @@
 // controllers/textsController.js
 import { supabase } from '../config/supabase.js';
-import { elevenlabs_generateAudio } from '../utils/elevenlabs.js';
+import { elevenlabs_generateAudio } from '../config/elevenlabs.js';
 
 const validateTextFields = ({ title, content }, isUpdate = false) => {
   if (!isUpdate || title !== undefined) {

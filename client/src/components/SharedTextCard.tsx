@@ -134,7 +134,7 @@ export default function SharedTextCard({ sharedText }: SharedTextCardProps) {
 
   const handleDownloadAudio = () => {
     if (!text.audio_url) return;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
     const link = document.createElement('a');
     link.href = `${baseUrl}${text.audio_url}?t=${audioKey}`;
     link.download = `${text.title}.mp3`;

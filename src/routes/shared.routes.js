@@ -12,7 +12,6 @@ import {
 
 const router = express.Router();
 
-
 // Obtener textos compartidos conmigo
 router.get('/received', validateToken, getSharedWithMe);
 

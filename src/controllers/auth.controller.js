@@ -3,7 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { createToken } from "../middlewares/jwt.js";
 
 // ============================
-// 👉 REGISTER USER
+// REGISTER USER
 // ============================
 export const register_user = async (req, res) => {
   try {
@@ -86,7 +86,7 @@ export const register_user = async (req, res) => {
 };
 
 // ============================
-// 👉 LOGIN USER
+// LOGIN USER
 // ============================
 export const login_user = async (req, res) => {
   try {
@@ -134,7 +134,7 @@ export const login_user = async (req, res) => {
 };
 
 // ============================
-// 👉 LOGOUT
+// LOGOUT
 // ============================
 export const logout_user = (req, res) => {
   res.clearCookie("token", { path: "/" });

@@ -19,9 +19,8 @@ app.use(express.json());
 
 app.use(cookieParser());
 
-//Servir los audios
+// Servir los audios para url publicas
 app.use('/audiofiles', express.static(path.join(process.cwd(), 'audiofiles')));
-
 
 // Configura __dirname correctamente
 const __filename = fileURLToPath(import.meta.url);
@@ -67,11 +66,8 @@ app.get("/*splat", (req, res) => {
   res.sendFile(path.resolve(__dirname, "../client/out/index.html"));
 });
 
-// Verificar conexión antes de iniciar el servidor
+// Verificar conexión con DB antes de iniciar el servidor
 checkDatabaseConnection();
-
-import { elevenlabs_generateAudio } from './utils/elevenlabs.js';
-
 
 // Iniciar servidor
 app.listen(process.env.PORT, () => {

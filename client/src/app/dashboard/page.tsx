@@ -12,7 +12,8 @@ import {
   Search,
   Filter,
   BarChart3,
-  Star
+  Star,
+  User
 } from 'lucide-react';
 import { getTexts, logout, getSharedWithMe, getFavorites } from '../../utils/api';
 import { Text, SharedText } from '../../types';
@@ -22,6 +23,7 @@ import CreateTextModal from '../../components/CreateTextModal';
 import SharedTextsModal from '../../components/SharedTextsModal';
 import AnalyticsModal from '../../components/AnalyticsModal';
 import FavoriteModal from '../../components/FavoriteModal';
+import ProfileModal from '../../components/ProfileModal';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -33,6 +35,7 @@ export default function DashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSharedModal, setShowSharedModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [favorites, setFavorites] = useState<Text[]>([]);
   const [showFavoriteModal, setShowFavoriteModal] = useState(false);
 
@@ -127,15 +130,23 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="border-b border-gray-900">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">TXT.Audio</h1>
+          <h1 className="text-2xl font-bold">TXT.Lib</h1>
           
           <div className="flex items-center gap-3">
             <button
-              onClick={handleOpenFavorites} // <--- cargar favoritos antes de abrir
+              onClick={() => setShowProfile(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
+            >
+              <User className="w-4 h-4" />
+              <span className="hidden sm:inline">Perfil</span>
+            </button>
+
+            <button
+              onClick={handleOpenFavorites}
               className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
             >
               <Star className="w-4 h-4" />
-              Favoritos
+              <span className="hidden sm:inline">Favoritos</span>
             </button>
 
             <button
@@ -143,8 +154,9 @@ export default function DashboardPage() {
               className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
             >
               <BarChart3 className="w-4 h-4" />
-              Analytics
+              <span className="hidden sm:inline">Analytics</span>
             </button>
+
             <button
               onClick={() => setShowSharedModal(true)}
               className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
@@ -157,8 +169,7 @@ export default function DashboardPage() {
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
             >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Salir</span>
+              <LogOut className="w-4 h-4 text-red-500" />
             </button>
           </div>
         </div>
@@ -274,13 +285,17 @@ export default function DashboardPage() {
         />
       )}
 
+      {showProfile && (
+        <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
+
       {showAnalytics && (
         <AnalyticsModal onClose={() => setShowAnalytics(false)} />
       )}
 
       {showFavoriteModal && (
         <FavoriteModal
-          favorites={favorites}  // lista actualizada de favoritos
+          favorites={favorites}
           onClose={() => setShowFavoriteModal(false)}
         />
       )}
