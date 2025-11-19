@@ -83,7 +83,7 @@ export default function SharedTextCard({ sharedText }: SharedTextCardProps) {
   // Actualizar src del audio cuando cambia la URL o el audioKey
   useEffect(() => {
     if (audioRef.current && text.audio_url) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
       const newSrc = `${baseUrl}${text.audio_url}?t=${audioKey}`;
       
       // Detener y limpiar el audio anterior
@@ -134,7 +134,7 @@ export default function SharedTextCard({ sharedText }: SharedTextCardProps) {
 
   const handleDownloadAudio = () => {
     if (!text.audio_url) return;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
     const link = document.createElement('a');
     link.href = `${baseUrl}${text.audio_url}?t=${audioKey}`;
     link.download = `${text.title}.mp3`;
