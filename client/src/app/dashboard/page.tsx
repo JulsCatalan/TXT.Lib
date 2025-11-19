@@ -10,35 +10,18 @@ import {
   LogOut,
   Loader2,
   Search,
-  Filter
+  Filter,
+  BarChart3,
+  Star
 } from 'lucide-react';
-import { getTexts, logout, getSharedWithMe } from '../../utils/api';
-import { Text } from '../../types';
+import { getTexts, logout, getSharedWithMe, getFavorites } from '../../utils/api';
+import { Text, SharedText } from '../../types';
 import TextCard from '../../components/TextCard';
 import SharedTextCard from '../../components/SharedTextCard';
 import CreateTextModal from '../../components/CreateTextModal';
 import SharedTextsModal from '../../components/SharedTextsModal';
-
-interface SharedText {
-  share_id: string;
-  can_edit: boolean;
-  shared_at: string;
-  shared_by: {
-    id: string;
-    username: string;
-    email: string;
-  };
-  text: {
-    id: string;
-    title: string;
-    content: string;
-    audio_url: string | null;
-    audio_generated: boolean;
-    category: string | null;
-    word_count: number;
-    created_at: string;
-  };
-}
+import AnalyticsModal from '../../components/AnalyticsModal';
+import FavoriteModal from '../../components/FavoriteModal';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -49,6 +32,9 @@ export default function DashboardPage() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSharedModal, setShowSharedModal] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [favorites, setFavorites] = useState<Text[]>([]);
+  const [showFavoriteModal, setShowFavoriteModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -90,7 +76,22 @@ export default function DashboardPage() {
     loadData(); // Recargar la lista después de actualizar
   };
 
-  // Filtrar textos propios
+  // ===== Favoritos =====
+  const loadFavorites = async () => {
+    try {
+      const favs: { favorite_id: string; favorited_at: string; text: Text }[] = await getFavorites();
+      setFavorites(favs.map((f) => f.text));
+    } catch (error) {
+      console.error('Error al cargar favoritos:', error);
+    }
+  };
+
+  const handleOpenFavorites = async () => {
+    await loadFavorites();
+    setShowFavoriteModal(true);
+  };
+
+  // ===== Filtrado =====
   const filteredTexts = texts.filter((text) => {
     const matchesSearch = text.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          text.content.toLowerCase().includes(searchQuery.toLowerCase());
@@ -98,7 +99,6 @@ export default function DashboardPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Filtrar textos compartidos
   const filteredSharedTexts = sharedTexts.filter((item) => {
     const matchesSearch = item.text.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          item.text.content.toLowerCase().includes(searchQuery.toLowerCase());
@@ -106,13 +106,11 @@ export default function DashboardPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // Obtener categorías únicas de ambas fuentes
   const allCategories = [
     ...texts.map(t => t.category).filter(Boolean),
     ...sharedTexts.map(s => s.text.category).filter(Boolean)
   ];
   const categories = Array.from(new Set(allCategories));
-
   const totalFiltered = filteredTexts.length + filteredSharedTexts.length;
 
   if (loading) {
@@ -132,6 +130,21 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold">TXT.Audio</h1>
           
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleOpenFavorites} // <--- cargar favoritos antes de abrir
+              className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
+            >
+              <Star className="w-4 h-4" />
+              Favoritos
+            </button>
+
+            <button
+              onClick={() => setShowAnalytics(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </button>
             <button
               onClick={() => setShowSharedModal(true)}
               className="flex items-center gap-2 px-4 py-2 border border-gray-900 rounded-lg hover:bg-gray-900 transition text-sm"
@@ -258,6 +271,17 @@ export default function DashboardPage() {
         <CreateTextModal
           onClose={() => setShowCreateModal(false)}
           onCreated={handleTextCreated}
+        />
+      )}
+
+      {showAnalytics && (
+        <AnalyticsModal onClose={() => setShowAnalytics(false)} />
+      )}
+
+      {showFavoriteModal && (
+        <FavoriteModal
+          favorites={favorites}  // lista actualizada de favoritos
+          onClose={() => setShowFavoriteModal(false)}
         />
       )}
 
