@@ -1,8 +1,7 @@
-import axios from "axios";
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import fs from 'fs';
 import path from 'path';
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
 // Voces disponibles
@@ -14,34 +13,36 @@ const VOICES = {
 // Directorio base para guardar audios
 const AUDIO_BASE_DIR = path.join(process.cwd(), 'audiofiles');
 
+// Inicializar cliente (usa ELEVENLABS_API_KEY automáticamente del env)
+const elevenlabs = new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY
+});
+
 export const elevenlabs_generateAudio = async ({ text, textId, userId, gender = 'female' }) => {
   try {
-    // Validar género
     const voiceId = VOICES[gender] || VOICES.female;
     
-    console.log(`🔊 Generando audio con ElevenLabs (voz ${gender})...`);
+    console.log(`🔊 Generando audio con ElevenLabs SDK (voz ${gender})...`);
     console.log(`🎤 Voice ID: ${voiceId}`);
 
-    // Llamada a la API de ElevenLabs
-    const response = await axios({
-      method: "POST",
-      url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json"
-      },
-      responseType: "arraybuffer",
-      data: {
-        text,
-        model_id: ELEVENLABS_MODEL,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
-      }
+    // Usar el SDK oficial
+    const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
+      text,
+      modelId: ELEVENLABS_MODEL,
+      outputFormat: 'mp3_44100_128',
     });
 
-    const audioBuffer = Buffer.from(response.data);
+    // Convertir el stream a Buffer
+    const chunks = [];
+    const reader = audioStream.getReader();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    
+    const audioBuffer = Buffer.concat(chunks);
     console.log(`✅ Audio generado: ${audioBuffer.length} bytes`);
 
     // Crear directorio del usuario si no existe
@@ -50,20 +51,19 @@ export const elevenlabs_generateAudio = async ({ text, textId, userId, gender = 
       fs.mkdirSync(userDir, { recursive: true });
     }
 
-    // Guardar archivo en el servidor
+    // Guardar archivo
     const fileName = `${textId}.mp3`;
     const filePath = path.join(userDir, fileName);
     
     fs.writeFileSync(filePath, audioBuffer);
     console.log(`💾 Audio guardado en: ${filePath}`);
 
-    // Generar URL relativa para acceder al archivo
     const audioUrl = `/audiofiles/${userId}/${fileName}`;
     
     return audioUrl;
 
   } catch (error) {
-    console.error("❌ Error en ElevenLabs:", error.response?.data || error.message);
+    console.error("❌ Error en ElevenLabs:", error.message);
     throw error;
   }
 };

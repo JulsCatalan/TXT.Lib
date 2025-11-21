@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.24.1",
     "@kapso/whatsapp-cloud-api": "^0.1.1",
     "@supabase/supabase-js": "^2.81.1",
     "axios": "^1.13.2",
