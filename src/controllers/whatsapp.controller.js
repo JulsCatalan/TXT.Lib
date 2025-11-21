@@ -2,6 +2,59 @@ import { supabase } from '../config/supabase.js';
 import { kapso } from '../config/kapso.js';
 
 /* ========================================
+   HELPER: Manejar errores de Kapso/WhatsApp
+======================================== */
+const handleKapsoError = (error) => {
+  console.error('Error enviando por Kapso:', error);
+
+  // Error de ventana de 24 horas
+  if (error.raw?.error?.includes('24-hour window') || 
+      error.message?.includes('24-hour window')) {
+    return {
+      code: 'SESSION_EXPIRED',
+      message: 'Tu sesión de WhatsApp expiró. Envía "hola" al número de TXT.Audio en WhatsApp para reactivarla.',
+      userFriendly: true
+    };
+  }
+
+  // Error de número inválido
+  if (error.raw?.error?.includes('invalid phone') || 
+      error.code === 400) {
+    return {
+      code: 'INVALID_PHONE',
+      message: 'El número de teléfono no es válido. Verifica que incluya el código de país.',
+      userFriendly: true
+    };
+  }
+
+  // Error de audio no accesible
+  if (error.raw?.error?.includes('unable to download') || 
+      error.raw?.error?.includes('media')) {
+    return {
+      code: 'AUDIO_NOT_ACCESSIBLE',
+      message: 'No se pudo acceder al archivo de audio. Intenta regenerar el audio.',
+      userFriendly: true
+    };
+  }
+
+  // Error de rate limit
+  if (error.httpStatus === 429) {
+    return {
+      code: 'RATE_LIMIT',
+      message: 'Demasiados mensajes enviados. Espera unos minutos e intenta de nuevo.',
+      userFriendly: true
+    };
+  }
+
+  // Error genérico
+  return {
+    code: 'UNKNOWN',
+    message: 'Error al enviar por WhatsApp. Intenta de nuevo más tarde.',
+    userFriendly: false
+  };
+};
+
+/* ========================================
    ENVIAR SOLO AUDIO POR WHATSAPP
 ======================================== */
 export const sendAudio = async (req, res) => {
@@ -27,7 +80,6 @@ export const sendAudio = async (req, res) => {
     let targetPhone;
 
     if (to_self) {
-      // Enviar a mí mismo - verificar configuración
       const { data: userData } = await supabase
         .from('users')
         .select('phone_number, whatsapp_verified')
@@ -48,14 +100,11 @@ export const sendAudio = async (req, res) => {
       targetPhone = to_phone;
     }
 
-    // Construir URL pública completa del audio
-    // El audio está en /audiofiles en el backend
-    const baseUrl = process.env.BASE_URL || process.env.API_URL
+    const baseUrl = process.env.BASE_URL || process.env.API_URL;
     const audioUrl = `${baseUrl}${text.audio_url}`;
 
     console.log('📱 Audio URL para WhatsApp:', audioUrl);
 
-    // Enviar audio por WhatsApp con Kapso
     const isDevelopment = process.env.NODE_ENV === 'development';
     
     try {
@@ -72,11 +121,13 @@ export const sendAudio = async (req, res) => {
         console.log(`[DEV] URL: ${audioUrl}`);
       }
     } catch (kapsoError) {
-      console.error('Error enviando por Kapso:', kapsoError);
-      throw new Error('Error al enviar por WhatsApp');
+      const errorInfo = handleKapsoError(kapsoError);
+      return res.status(422).json({ 
+        error: errorInfo.message,
+        code: errorInfo.code
+      });
     }
 
-    // Registrar notificación
     await supabase
       .from('whatsapp_notifications')
       .insert({
@@ -112,7 +163,6 @@ export const sendText = async (req, res) => {
       return res.status(400).json({ error: 'text_id es requerido' });
     }
 
-    // Obtener texto
     const { data: text, error: textError } = await supabase
       .from('texts')
       .select('id, title, content, category')
@@ -126,7 +176,6 @@ export const sendText = async (req, res) => {
     let targetPhone;
 
     if (to_self) {
-      // Enviar a mí mismo - verificar configuración
       const { data: userData } = await supabase
         .from('users')
         .select('phone_number, whatsapp_verified')
@@ -147,14 +196,12 @@ export const sendText = async (req, res) => {
       targetPhone = to_phone;
     }
 
-    // Formatear mensaje
     let message = `📝 *${text.title}*\n\n`;
     if (text.category) {
       message += `_Categoría: ${text.category}_\n\n`;
     }
     message += text.content;
 
-    // Enviar texto por WhatsApp con Kapso
     const isDevelopment = process.env.NODE_ENV === 'development';
     
     try {
@@ -168,11 +215,13 @@ export const sendText = async (req, res) => {
         console.log(`[DEV] Enviando texto a ${targetPhone}:\n${message}`);
       }
     } catch (kapsoError) {
-      console.error('Error enviando por Kapso:', kapsoError);
-      throw new Error('Error al enviar por WhatsApp');
+      const errorInfo = handleKapsoError(kapsoError);
+      return res.status(422).json({ 
+        error: errorInfo.message,
+        code: errorInfo.code
+      });
     }
 
-    // Registrar notificación
     await supabase
       .from('whatsapp_notifications')
       .insert({
@@ -208,7 +257,6 @@ export const sendTextAndAudio = async (req, res) => {
       return res.status(400).json({ error: 'text_id es requerido' });
     }
 
-    // Obtener texto y audio
     const { data: text, error: textError } = await supabase
       .from('texts')
       .select('id, title, content, audio_url, category')
@@ -226,7 +274,6 @@ export const sendTextAndAudio = async (req, res) => {
     let targetPhone;
 
     if (to_self) {
-      // Enviar a mí mismo - verificar configuración
       const { data: userData } = await supabase
         .from('users')
         .select('phone_number, whatsapp_verified')
@@ -247,32 +294,27 @@ export const sendTextAndAudio = async (req, res) => {
       targetPhone = to_phone;
     }
 
-    // Construir URL pública completa del audio
     const baseUrl = process.env.BASE_URL || process.env.API_URL?.replace('/api', '') || 'http://localhost:3000';
     const audioUrl = `${baseUrl}${text.audio_url}`;
 
     console.log('📱 Audio URL para WhatsApp:', audioUrl);
 
-    // Formatear mensaje de texto
     let textMessage = `📝 *${text.title}*\n\n`;
     if (text.category) {
       textMessage += `_Categoría: ${text.category}_\n\n`;
     }
     textMessage += text.content;
 
-    // Enviar por WhatsApp con Kapso
     const isDevelopment = process.env.NODE_ENV === 'development';
     
     try {
       if (!isDevelopment) {
-        // Primero enviar el texto
         await kapso.messages.sendText({
           phoneNumberId: process.env.KAPSO_PHONE_SANDBOX,
           to: targetPhone,
           body: textMessage
         });
 
-        // Luego enviar el audio
         await kapso.messages.sendAudio({
           phoneNumberId: process.env.KAPSO_PHONE_SANDBOX,
           to: targetPhone,
@@ -286,11 +328,13 @@ export const sendTextAndAudio = async (req, res) => {
         console.log(`Audio: ${audioUrl}`);
       }
     } catch (kapsoError) {
-      console.error('Error enviando por Kapso:', kapsoError);
-      throw new Error('Error al enviar por WhatsApp');
+      const errorInfo = handleKapsoError(kapsoError);
+      return res.status(422).json({ 
+        error: errorInfo.message,
+        code: errorInfo.code
+      });
     }
 
-    // Registrar notificación
     await supabase
       .from('whatsapp_notifications')
       .insert({

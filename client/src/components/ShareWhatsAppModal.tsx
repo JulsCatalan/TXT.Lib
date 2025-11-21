@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Send, MessageCircle, AlertCircle, CheckCircle, Loader, Settings, FileText, Volume2, MessageSquare } from 'lucide-react';
 import { sendAudio, sendText, sendTextAndAudio, getUserProfile } from '../utils/api';
+import toast from 'react-hot-toast';
 
 interface ShareWhatsAppModalProps {
   textId: string;
@@ -53,7 +54,7 @@ export default function ShareWhatsAppModal({
 
   const handleSend = async () => {
     if (!toSelf && !phoneNumber.trim()) {
-      alert('Ingresa un número de WhatsApp válido');
+      toast.error('Ingresa un número de WhatsApp válido');
       return;
     }
 
@@ -74,11 +75,11 @@ export default function ShareWhatsAppModal({
         await sendTextAndAudio(params);
       }
 
-      alert('✅ Contenido enviado por WhatsApp');
+      toast.success('Contenido enviado por WhatsApp');
       onClose();
     } catch (err: any) {
       console.error(err);
-      alert(err.message || 'Error al enviar por WhatsApp');
+      toast.error(err.message || 'Error al enviar por WhatsApp');
     } finally {
       setLoading(false);
     }

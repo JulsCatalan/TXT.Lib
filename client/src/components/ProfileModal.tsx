@@ -10,6 +10,7 @@ import {
   toggleNotifications,
   removePhoneNumber 
 } from '../utils/api';
+import toast from 'react-hot-toast';
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -65,7 +66,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
       setVerificationCode('');
       setCodeSent(false);
     } catch (err: any) {
-      alert(err.message || 'Error al actualizar número');
+      toast.error(err.message || 'Error al actualizar número');
     } finally {
       setPhoneLoading(false);
     }
@@ -114,7 +115,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
       setCodeSent(false);
       
       // Mostrar mensaje de éxito
-      alert('✅ Número verificado correctamente');
+      toast.success('✅ Número verificado correctamente');
     } catch (err: any) {
       setVerificationError(err.message || 'Código incorrecto');
     } finally {
@@ -124,7 +125,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
 
   const handleToggleNotifications = async () => {
     if (!profile?.user?.whatsapp_verified) {
-      alert('Primero debes verificar tu número de WhatsApp');
+      toast.error('Primero debes verificar tu número de WhatsApp');
       return;
     }
 
@@ -134,7 +135,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
       await toggleNotifications(newState);
       await loadProfile();
     } catch (err: any) {
-      alert(err.message || 'Error al actualizar notificaciones');
+      toast.error(err.message || 'Error al actualizar notificaciones');
     } finally {
       setNotificationsLoading(false);
     }
@@ -152,7 +153,7 @@ export default function ProfileModal({ onClose }: ProfileModalProps) {
       setShowVerification(false);
       setCodeSent(false);
     } catch (err: any) {
-      alert(err.message || 'Error al eliminar número');
+      toast.error(err.message || 'Error al eliminar número');
     } finally {
       setPhoneLoading(false);
     }
