@@ -4,9 +4,10 @@
 
 ## 📋 Descripción del Proyecto
 
-TXT.Audio es una plataforma completa para gestionar textos y generar audios a partir de ellos utilizando **ElevenLabs**. El proyecto incluye:
+TXT.Lib es una plataforma completa para gestionar textos y generar audios a partir de ellos utilizando **ElevenLabs**. El proyecto incluye:
 
 - ✅ **Generación de audio** con ElevenLabs (voces masculinas y femeninas)
+- ✅ **Almacenamiento en la nube** con Supabase Storage (persistente)
 - ✅ **Compartir textos** entre usuarios dentro de la plataforma
 - ✅ **Analytics completos** con estadísticas de uso y reproducciones
 - ✅ **Integración con WhatsApp** vía Kapso para enviar audios y textos
@@ -21,7 +22,8 @@ TXT.Audio es una plataforma completa para gestionar textos y generar audios a pa
 - **Puerto**: 3000
 - **Base de datos**: Supabase (PostgreSQL)
 - **Autenticación**: JWT personalizado (sin usar Supabase Auth)
-- **Almacenamiento de audio**: Servidor local en carpeta `/audiofiles`
+- **Almacenamiento de audio**: Supabase Storage (bucket `audiofiles`)
+- **Text-to-Speech**: ElevenLabs SDK oficial
 
 ### Frontend
 - **Framework**: Next.js
@@ -44,6 +46,13 @@ TXT.Audio es una plataforma completa para gestionar textos y generar audios a pa
 4. Copia y pega el contenido de `db.sql` (ubicado en la raíz del proyecto)
 5. Ejecuta el script para crear todas las tablas, funciones y triggers
 
+### Configuración de Storage
+
+1. Ve a **Storage** en tu proyecto de Supabase
+2. Crea un nuevo bucket llamado `audiofiles`
+3. Marca la opción **Public bucket** (para que los audios sean accesibles)
+4. Guarda el bucket
+
 ### Tablas Principales
 - `users` - Usuarios con autenticación personalizada
 - `texts` - Textos creados por usuarios
@@ -58,7 +67,6 @@ TXT.Audio es una plataforma completa para gestionar textos y generar audios a pa
 ### 1. Variables de Entorno - Backend
 
 Crea un archivo `.env` en la carpeta raíz:
-
 ```bash
 # ==========================================
 # SUPABASE
@@ -93,7 +101,6 @@ KAPSO_PHONE_SANDBOX=tu-numero-sandbox-kapso
 ### 2. Variables de Entorno - Frontend
 
 Crea un archivo `.env.local` en la carpeta `frontend`:
-
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
 ```
@@ -109,6 +116,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api
 1. Crea cuenta en [ElevenLabs](https://elevenlabs.io)
 2. Ve a Profile → API Keys
 3. Copia tu API key
+4. **Nota**: El tier gratuito no funciona desde servidores/VPNs, requiere plan de pago ($5/mes mínimo)
 
 #### Kapso (WhatsApp)
 1. Crea cuenta en [Kapso](https://kapso.ai)
@@ -119,7 +127,6 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api
 ### Desarrollo Local
 
 Desde la **raíz del proyecto**, ejecuta:
-
 ```bash
 npm run build
 ```
@@ -131,7 +138,6 @@ Este comando hace:
 4. ✅ Configura todo para correr en puerto 3000
 
 Luego inicia el servidor:
-
 ```bash
 npm start
 ```
@@ -139,7 +145,6 @@ npm start
 La aplicación estará disponible en: **http://localhost:3000**
 
 ### Scripts Disponibles
-
 ```bash
 # Instalar dependencias de ambos proyectos
 npm install
@@ -158,14 +163,13 @@ cd frontend && npm run dev
 ```
 
 ## 📁 Estructura del Proyecto
-
 ```
-TXT.Audio/
+TXT.Lib/
 ├── src/                          # Backend
 │   ├── config/
 │   │   ├── supabase.js          # Configuración Supabase
 │   │   ├── kapso.js             # Configuración Kapso
-│   │   └── elevenlabs.js        # Configuración ElevenLabs
+│   │   └── elevenlabs.js        # Generación de audio + Storage
 │   ├── controllers/             # Controladores MVC
 │   │   ├── auth.controller.js
 │   │   ├── texts.controller.js
@@ -173,18 +177,16 @@ TXT.Audio/
 │   │   ├── whatsapp.controller.js
 │   │   ├── shared.controller.js
 │   │   ├── favorites.controller.js
-│   │   ├── whatsapp.controller.js
 │   │   └── users.controller.js
 │   ├── routes/                  # Rutas API
 │   ├── middleware/              # Middlewares (auth, etc)
 │   └── utils/                   # Utilidades
 │   ├── app.js                   # Servidor Express principal
-├── client/                    # Frontend Next.js
+├── client/                      # Frontend Next.js
 │   ├── app/                     # App router de Next.js
 │   ├── components/              # Componentes React
 │   ├── utils/                   # API calls y utilidades
 │   └── types/                   # TypeScript types
-├── audiofiles/                  # Audios generados (local)
 ├── db.txt                       # Script SQL de base de datos
 ├── package.json                 # Dependencias backend
 └── README.md                    # Este archivo
@@ -197,13 +199,15 @@ TXT.Audio/
 - Organizar por categorías
 - Sistema de búsqueda y filtros
 - Contador de palabras automático
+- Modal de confirmación para eliminación
 
 ### 2. Generación de Audio
-- Integración con ElevenLabs
+- Integración con ElevenLabs SDK oficial
 - Voces masculinas y femeninas
-- Reproducción en línea con controles
+- Reproducción en línea con controles interactivos
+- Timeline clickeable para navegar el audio
 - Descarga de archivos MP3
-- Almacenamiento local en servidor
+- **Almacenamiento persistente en Supabase Storage**
 
 ### 3. Compartir y Colaborar
 - Compartir textos con otros usuarios
@@ -229,15 +233,14 @@ TXT.Audio/
 - Enviar solo texto
 - Enviar texto + audio
 - Verificación de número con código
-- Notificaciones configurables
-- Envío a uno mismo o a otros números
+- Envío a uno mismo (envío a otros próximamente)
+- Mensajes de error descriptivos para problemas comunes
 
 ### 7. Perfil de Usuario
 - Información básica de cuenta
 - Estadísticas personales
 - Configuración de WhatsApp
 - Verificación de número telefónico
-- Toggle de notificaciones
 
 ## 🔐 Autenticación
 
@@ -271,13 +274,14 @@ El sistema trackea automáticamente:
 ### Consideraciones
 - ⚠️ En tier gratuito, el servidor se duerme después de inactividad
 - ⚠️ Primera carga puede tardar ~1 minuto
-- ⚠️ Los audios se almacenan localmente (considerar S3 para producción)
+- ✅ Audios almacenados en Supabase Storage (persistentes entre deploys)
 - ✅ WhatsApp requiere URLs HTTPS (Render incluye SSL gratis)
+- ✅ ElevenLabs requiere plan de pago para funcionar desde servidores
 
 ## 🎯 Decisiones Técnicas
 
-### ¿Por qué no S3 para los audios?
-Para optimizar tiempo de desarrollo y agilidad en este proyecto de entrevista, opté por almacenamiento local. En producción se recomienda migrar a S3 o similar.
+### ¿Por qué Supabase Storage para los audios?
+Inicialmente se usaba almacenamiento local, pero los archivos se perdían con cada redeploy en Render. Supabase Storage ofrece persistencia gratuita y URLs públicas para los audios.
 
 ### ¿Por qué autenticación personalizada?
 Aunque Supabase tiene su propio sistema de auth, decidí implementar JWT personalizado para tener mayor control y demostrar conocimiento en autenticación custom.
@@ -285,19 +289,37 @@ Aunque Supabase tiene su propio sistema de auth, decidí implementar JWT persona
 ### ¿Por qué Next.js estático en lugar de SSR?
 Para simplificar el despliegue en Render y poder servir todo desde un solo servidor en el puerto 3000, evitando complejidad de infraestructura.
 
-### ¿Por qué puerto 5173 en desarrollo?
-Para mantener la experiencia de desarrollo similar a Vite/React puro, facilitando el hot-reload y desarrollo ágil.
+### ¿Por qué ElevenLabs SDK oficial?
+Migramos de axios directo al SDK oficial de ElevenLabs para mejor manejo de streams, autenticación y errores.
+
+## 🚀 Mejoras Futuras
+
+### Alta Prioridad
+- **Sistema de notificaciones**: Notificaciones en tiempo real cuando alguien comparte un texto contigo o reproduce tu audio
+- **Compartir por WhatsApp a otros usuarios**: Actualmente solo se puede enviar a uno mismo, habilitar envío a cualquier número
+- **Auth persistence en frontend**: Implementar persistencia de sesión en el cliente para mejor UX (no implementado por tiempo)
+
+### Media Prioridad
+- **Sistema de recomendaciones inteligente**: Usar el historial de reproducciones y favoritos para sugerir textos similares
+- **Chat conversacional con MCP**: Integrar Model Context Protocol de Kapso para conversaciones interactivas por WhatsApp
+- **Rate limiting**: Protección contra abuso y bots maliciosos en los endpoints de la API
+
+### Baja Prioridad
+- **Múltiples voces**: Expandir opciones de voces más allá de masculina/femenina
+- **Exportación de analytics**: Descargar reportes en CSV/PDF
+- **Modo offline**: Cachear audios para reproducción sin conexión
+- **API pública**: Documentar y exponer API para integraciones de terceros
 
 ## 🛠️ Stack Tecnológico Completo
 
 ### Backend
 - Node.js 18+
 - Express.js
-- Supabase (PostgreSQL)
+- Supabase (PostgreSQL + Storage)
 - JWT (jsonwebtoken)
 - bcryptjs
-- ElevenLabs SDK
-- Kapso SDK
+- ElevenLabs SDK (@elevenlabs/elevenlabs-js)
+- Kapso SDK (@kapso/whatsapp-cloud-api)
 - ES Modules
 
 ### Frontend
@@ -309,15 +331,16 @@ Para mantener la experiencia de desarrollo similar a Vite/React puro, facilitand
 
 ### DevOps
 - Render (hosting)
+- Supabase (base de datos + storage)
 - Git (control de versiones)
 
 ## 📝 Notas Importantes
 
 1. **Primer arranque**: En Render gratuito, la primera carga tarda ~1 minuto
-2. **Audios**: Se guardan en `/audiofiles` del servidor
-3. **Base de datos**: Ejecutar `db.txt` en Supbase antes de usar
-4. **WhatsApp**: Requiere verificación de número
-5. **ElevenLabs**: Cada generación consume créditos de la API
+2. **Audios**: Se guardan en Supabase Storage (bucket `audiofiles`)
+3. **Base de datos**: Ejecutar `db.sql` en Supabase antes de usar
+4. **WhatsApp**: Requiere verificación de número y ventana de 24 horas activa
+5. **ElevenLabs**: Requiere plan de pago para funcionar desde servidores
 
 ## 🐛 Troubleshooting
 
@@ -328,18 +351,19 @@ Para mantener la experiencia de desarrollo similar a Vite/React puro, facilitand
 
 ### No se generan audios
 - Verifica tu API key de ElevenLabs
-- Comprueba que tengas créditos disponibles
-- Revisa los logs de error
+- **Importante**: El tier gratuito de ElevenLabs no funciona desde servidores, necesitas plan de pago
+- Comprueba que el bucket `audiofiles` exista en Supabase Storage
+- Revisa los logs de error del servidor
 
 ### Error al enviar por WhatsApp
-- Verifica que tu número esté verificado
+- **"Sesión expirada"**: Envía "hola" al número de TXT.Lib en WhatsApp para reactivar la ventana de 24 horas
+- Verifica que tu número esté verificado en la app
 - Comprueba las credenciales de Kapso
-- Asegúrate de que `BASE_URL` sea accesible públicamente
 
 ### Los audios no se reproducen
-- Verifica que `/audiofiles` esté servido estáticamente
-- Comprueba que el archivo exista en el servidor
-- Revisa la URL completa del audio en los logs
+- Verifica que el bucket `audiofiles` sea público en Supabase
+- Comprueba la URL del audio en la consola del navegador
+- Para audios legacy (almacenados localmente), pueden haberse perdido con un redeploy
 
 ## 👨‍💻 Desarrollo
 

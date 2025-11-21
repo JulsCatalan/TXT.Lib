@@ -73,8 +73,10 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
     if (audioRef.current && localText.audio_url) {
       const isFullUrl = localText.audio_url.startsWith('http');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+      
+      // Siempre agregar cache-buster para forzar recarga
       const newSrc = isFullUrl 
-        ? localText.audio_url 
+        ? `${localText.audio_url}?t=${audioKey}`
         : `${baseUrl}${localText.audio_url}?t=${audioKey}`;
       
       audioRef.current.pause();
@@ -182,25 +184,27 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   };
   
   const handleDownloadAudio = async () => {
-    if (!localText.audio_url) return;
-    
-    try {
-      await trackAudioDownload(localText.id);
-    } catch (err) {
-      console.error('Error trackeando descarga:', err);
-    }
-    
-    const isFullUrl = localText.audio_url.startsWith('http');
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-    const audioSrc = isFullUrl 
-      ? localText.audio_url 
-      : `${baseUrl}${localText.audio_url}?t=${audioKey}`;
-    
-    const link = document.createElement('a');
-    link.href = audioSrc;
-    link.download = `${localText.title}.mp3`;
-    link.click();
-  };
+  if (!localText.audio_url) return;
+  
+  try {
+    await trackAudioDownload(localText.id);
+  } catch (err) {
+    console.error('Error trackeando descarga:', err);
+  }
+  
+  const isFullUrl = localText.audio_url.startsWith('http');
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+  
+  // Siempre agregar cache-buster
+  const audioSrc = isFullUrl 
+    ? `${localText.audio_url}?t=${audioKey}`
+    : `${baseUrl}${localText.audio_url}?t=${audioKey}`;
+  
+  const link = document.createElement('a');
+  link.href = audioSrc;
+  link.download = `${localText.title}.mp3`;
+  link.click();
+};
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -220,18 +224,19 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   };
 
   const handleAudioGenerated = (audioUrl: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    if (isPlaying) {
-      stopPlayTracking(false);
-    }
-    setIsPlaying(false);
-    setAudioKey(Date.now());
-    setLocalText({ ...localText, audio_url: audioUrl, audio_generated: true });
-    setShowGenerateModal(false);
-    onUpdated();
-  };
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current.src = ''; // Limpiar src anterior
+  }
+  if (isPlaying) {
+    stopPlayTracking(false);
+  }
+  setIsPlaying(false);
+  setAudioKey(Date.now()); // Nuevo timestamp para forzar recarga
+  setLocalText({ ...localText, audio_url: audioUrl, audio_generated: true });
+  setShowGenerateModal(false);
+  onUpdated();
+};
 
   const handleTextUpdated = (updatedText: Text) => {
     setLocalText(updatedText);
