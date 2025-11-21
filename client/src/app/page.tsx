@@ -11,11 +11,11 @@ export default function HomePage() {
       {/* Header - Challenge Info */}
       <div className="absolute top-4 left-4 right-4 md:top-6 md:left-6 md:right-6 flex justify-between items-center">
         <div className="text-xs md:text-sm text-gray-500">
-          Challenge: <span className="text-white font-medium">SALMA</span>
+          Challenge: <span className="text-white font-medium">SAMLA</span>
         </div>
 
         <a
-          href="https://github.com/tu-usuario/tu-repo"
+          href="https://github.com/JulsCatalan/TXT.Lib"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 border border-gray-800 rounded-lg hover:border-gray-600 transition-all text-xs md:text-sm"
@@ -111,7 +111,7 @@ export default function HomePage() {
           Desarrollado por <span className="text-gray-400 font-medium">Juls Catalan</span>
         </div>
         <div className="text-gray-700 text-[10px] md:text-xs">
-          © 2024 TXTLib · Coding Challenge SALMA
+          © 2025 TXTLib · Coding Challenge SAMLA
         </div>
       </div>
     </div>
