@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Send, MessageCircle, AlertCircle, CheckCircle, Loader, Settings, FileText, Volume2, MessageSquare } from 'lucide-react';
+import { X, Send, MessageCircle, AlertCircle, CheckCircle, Loader, Settings, FileText, Volume2, MessageSquare, Clock } from 'lucide-react';
 import { sendAudio, sendText, sendTextAndAudio, getUserProfile } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -20,8 +20,6 @@ export default function ShareWhatsAppModal({
   onClose,
   onOpenProfile 
 }: ShareWhatsAppModalProps) {
-  const [toSelf, setToSelf] = useState(true);
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   
@@ -53,17 +51,11 @@ export default function ShareWhatsAppModal({
   };
 
   const handleSend = async () => {
-    if (!toSelf && !phoneNumber.trim()) {
-      toast.error('Ingresa un número de WhatsApp válido');
-      return;
-    }
-
     setLoading(true);
     try {
       const params = {
         text_id: textId,
-        to_self: toSelf,
-        to_phone: toSelf ? undefined : phoneNumber
+        to_self: true
       };
 
       // Enviar según el tipo seleccionado
@@ -93,7 +85,7 @@ export default function ShareWhatsAppModal({
   };
 
   // Validar si puede enviar
-  const canSend = toSelf ? (hasPhone && isVerified) : phoneNumber.trim().length > 0;
+  const canSend = hasPhone && isVerified;
 
   if (loadingProfile) {
     return (
@@ -252,59 +244,24 @@ export default function ShareWhatsAppModal({
             </div>
           </div>
 
-          {/* Opciones de envío */}
-          <div className="space-y-3">
-            <label className="flex items-start gap-3 p-3 border border-gray-900 rounded-lg cursor-pointer hover:border-gray-800 transition">
-              <input
-                type="radio"
-                name="sendOption"
-                checked={toSelf}
-                onChange={() => setToSelf(true)}
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Enviarme a mí mismo</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Recibirás el contenido en tu WhatsApp
-                </p>
-              </div>
-            </label>
-
-            <label className="flex items-start gap-3 p-3 border border-gray-900 rounded-lg cursor-pointer hover:border-gray-800 transition">
-              <input
-                type="radio"
-                name="sendOption"
-                checked={!toSelf}
-                onChange={() => setToSelf(false)}
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Enviar a otro número</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Comparte con cualquier número
-                </p>
-              </div>
-            </label>
+          {/* Destino - Solo a mí mismo por ahora */}
+          <div className="p-3 bg-gray-900/50 border border-gray-900 rounded-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-blue-500" />
+              <p className="text-sm">Se enviará a tu WhatsApp</p>
+            </div>
           </div>
 
-          {/* Input para otro número */}
-          {!toSelf && (
-            <div className="pt-2">
-              <label className="block text-xs text-gray-500 mb-2">
-                Número de WhatsApp
-              </label>
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="+52 123 456 7890"
-                className="w-full px-4 py-3 bg-gray-950 border border-gray-800 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition"
-              />
-              <p className="text-xs text-gray-600 mt-1">
-                Incluye código de país (ej: +52 para México)
-              </p>
+          {/* Próximamente: enviar a otros */}
+          <div className="p-3 border border-dashed border-gray-800 rounded-lg opacity-60">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-500" />
+              <div>
+                <p className="text-sm text-gray-500">Enviar a otro número</p>
+                <p className="text-xs text-gray-600">Próximamente</p>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Botón de envío */}
           <button
@@ -330,7 +287,7 @@ export default function ShareWhatsAppModal({
           </button>
 
           {/* Mensaje de ayuda */}
-          {toSelf && !canSend && (
+          {!canSend && (
             <p className="text-xs text-center text-gray-600">
               Completa la configuración de WhatsApp para enviar
             </p>

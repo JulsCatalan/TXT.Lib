@@ -80,25 +80,28 @@ export default function SharedTextCard({ sharedText }: SharedTextCardProps) {
     };
   }, [text.audio_url]);
 
-  // Actualizar src del audio cuando cambia la URL o el audioKey
-  useEffect(() => {
-    if (audioRef.current && text.audio_url) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-      const newSrc = `${baseUrl}${text.audio_url}?t=${audioKey}`;
-      
-      // Detener y limpiar el audio anterior
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
-      setAudioError(false);
-      
-      // Cargar nuevo audio
-      audioRef.current.src = newSrc;
-      audioRef.current.load();
-    }
-  }, [text.audio_url, audioKey]);
+// Actualizar src del audio cuando cambia la URL o el audioKey
+useEffect(() => {
+  if (audioRef.current && text.audio_url) {
+    const isFullUrl = text.audio_url.startsWith('http');
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+    const newSrc = isFullUrl 
+      ? text.audio_url 
+      : `${baseUrl}${text.audio_url}?t=${audioKey}`;
+    
+    // Detener y limpiar el audio anterior
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setAudioError(false);
+    
+    // Cargar nuevo audio
+    audioRef.current.src = newSrc;
+    audioRef.current.load();
+  }
+}, [text.audio_url, audioKey]);
 
   const handlePlayPause = () => {
     if (!audioRef.current || !text.audio_url || audioError) return;
@@ -132,14 +135,20 @@ export default function SharedTextCard({ sharedText }: SharedTextCardProps) {
     setCurrentTime(newTime);
   };
 
-  const handleDownloadAudio = () => {
-    if (!text.audio_url) return;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-    const link = document.createElement('a');
-    link.href = `${baseUrl}${text.audio_url}?t=${audioKey}`;
-    link.download = `${text.title}.mp3`;
-    link.click();
-  };
+const handleDownloadAudio = () => {
+  if (!text.audio_url) return;
+  
+  const isFullUrl = text.audio_url.startsWith('http');
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+  const audioSrc = isFullUrl 
+    ? text.audio_url 
+    : `${baseUrl}${text.audio_url}?t=${audioKey}`;
+  
+  const link = document.createElement('a');
+  link.href = audioSrc;
+  link.download = `${text.title}.mp3`;
+  link.click();
+};
 
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);

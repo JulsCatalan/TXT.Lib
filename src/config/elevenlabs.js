@@ -1,19 +1,13 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import fs from 'fs';
-import path from 'path';
+import { supabase } from './supabase.js';
 
 const ELEVENLABS_MODEL = "eleven_multilingual_v2";
 
-// Voces disponibles
 const VOICES = {
-  female: '21m00Tcm4TlvDq8ikWAM', // Rachel - Voz femenina
-  male: 'pNInz6obpgDQGcFmaJgB'    // Adam - Voz masculina
+  female: '21m00Tcm4TlvDq8ikWAM',
+  male: 'pNInz6obpgDQGcFmaJgB'
 };
 
-// Directorio base para guardar audios
-const AUDIO_BASE_DIR = path.join(process.cwd(), 'audiofiles');
-
-// Inicializar cliente (usa ELEVENLABS_API_KEY automáticamente del env)
 const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY
 });
@@ -25,14 +19,14 @@ export const elevenlabs_generateAudio = async ({ text, textId, userId, gender = 
     console.log(`🔊 Generando audio con ElevenLabs SDK (voz ${gender})...`);
     console.log(`🎤 Voice ID: ${voiceId}`);
 
-    // Usar el SDK oficial
+    // Generar audio con ElevenLabs
     const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
       text,
       modelId: ELEVENLABS_MODEL,
       outputFormat: 'mp3_44100_128',
     });
 
-    // Convertir el stream a Buffer
+    // Convertir stream a Buffer
     const chunks = [];
     const reader = audioStream.getReader();
     
@@ -45,22 +39,31 @@ export const elevenlabs_generateAudio = async ({ text, textId, userId, gender = 
     const audioBuffer = Buffer.concat(chunks);
     console.log(`✅ Audio generado: ${audioBuffer.length} bytes`);
 
-    // Crear directorio del usuario si no existe
-    const userDir = path.join(AUDIO_BASE_DIR, userId);
-    if (!fs.existsSync(userDir)) {
-      fs.mkdirSync(userDir, { recursive: true });
+    // Subir a Supabase Storage
+    const fileName = `${userId}/${textId}.mp3`;
+    
+    const { data, error } = await supabase.storage
+      .from('audiofiles')
+      .upload(fileName, audioBuffer, {
+        contentType: 'audio/mpeg',
+        upsert: true // Sobrescribir si existe
+      });
+
+    if (error) {
+      console.error('❌ Error subiendo a Supabase Storage:', error);
+      throw error;
     }
 
-    // Guardar archivo
-    const fileName = `${textId}.mp3`;
-    const filePath = path.join(userDir, fileName);
-    
-    fs.writeFileSync(filePath, audioBuffer);
-    console.log(`💾 Audio guardado en: ${filePath}`);
+    console.log(`💾 Audio subido a Supabase Storage: ${fileName}`);
 
-    const audioUrl = `/audiofiles/${userId}/${fileName}`;
-    
-    return audioUrl;
+    // Obtener URL pública
+    const { data: urlData } = supabase.storage
+      .from('audiofiles')
+      .getPublicUrl(fileName);
+
+    console.log(`🔗 URL pública: ${urlData.publicUrl}`);
+
+    return urlData.publicUrl;
 
   } catch (error) {
     console.error("❌ Error en ElevenLabs:", error.message);

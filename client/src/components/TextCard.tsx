@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Trash2, Share2, Edit, Download, Volume2, RefreshCw, AlertCircle, MessageCircle, StarOff, Star } from 'lucide-react';
+import { Play, Pause, Trash2, Share2, Edit, Download, Volume2, RefreshCw, AlertCircle, MessageCircle, StarOff, Star, X, Loader } from 'lucide-react';
 import { Text } from '../types';
 import { deleteText, addFavorite, removeFavorite, checkFavorite } from '../utils/api';
 import { trackPlayStart, updatePlaySession, trackAudioDownload } from '../utils/api';
@@ -21,6 +21,8 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [localText, setLocalText] = useState(text);
   const [isFavorite, setIsFavorite] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -67,20 +69,24 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   }, [localText.audio_url]);
 
   // Cargar src de audio cuando cambia
-useEffect(() => {
-  if (audioRef.current && localText.audio_url) {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-    const newSrc = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setAudioError(false);
-    audioRef.current.src = newSrc;
-    audioRef.current.load();
-  }
-}, [localText.audio_url, audioKey]);
+  useEffect(() => {
+    if (audioRef.current && localText.audio_url) {
+      const isFullUrl = localText.audio_url.startsWith('http');
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+      const newSrc = isFullUrl 
+        ? localText.audio_url 
+        : `${baseUrl}${localText.audio_url}?t=${audioKey}`;
+      
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setAudioError(false);
+      audioRef.current.src = newSrc;
+      audioRef.current.load();
+    }
+  }, [localText.audio_url, audioKey]);
 
   // Verificar si el texto ya es favorito al cargar la tarjeta
   useEffect(() => {
@@ -102,13 +108,12 @@ useEffect(() => {
       setPlaySessionId(response.session_id);
       setLastTrackedTime(0);
       
-      // Trackear progreso cada 10 segundos
       trackingIntervalRef.current = setInterval(() => {
         if (audioRef.current && playSessionId) {
           const currentDuration = audioRef.current.currentTime;
           updatePlayTracking(currentDuration, false);
         }
-      }, 10000); // Cada 10 segundos
+      }, 10000);
     } catch (err) {
       console.error('Error iniciando tracking:', err);
     }
@@ -118,7 +123,6 @@ useEffect(() => {
     if (!playSessionId) return;
     
     try {
-      // Solo actualizar si hay cambio significativo (>1 segundo)
       if (Math.abs(durationPlayed - lastTrackedTime) > 1 || completed) {
         await updatePlaySession(playSessionId, durationPlayed, completed);
         setLastTrackedTime(durationPlayed);
@@ -165,7 +169,7 @@ useEffect(() => {
   const handleAudioEnded = async () => {
     setIsPlaying(false);
     setCurrentTime(0);
-    await stopPlayTracking(true); // Marcado como completado
+    await stopPlayTracking(true);
   };
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -176,36 +180,42 @@ useEffect(() => {
     audioRef.current.currentTime = newTime;
     setCurrentTime(newTime);
   };
-
+  
   const handleDownloadAudio = async () => {
-  if (!localText.audio_url) return;
-  
-  // Trackear descarga
-  try {
-    await trackAudioDownload(localText.id);
-  } catch (err) {
-    console.error('Error trackeando descarga:', err);
-  }
-  
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
-  const link = document.createElement('a');
-  link.href = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
-  link.download = `${localText.title}.mp3`;
-  link.click();
-};
+    if (!localText.audio_url) return;
+    
+    try {
+      await trackAudioDownload(localText.id);
+    } catch (err) {
+      console.error('Error trackeando descarga:', err);
+    }
+    
+    const isFullUrl = localText.audio_url.startsWith('http');
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+    const audioSrc = isFullUrl 
+      ? localText.audio_url 
+      : `${baseUrl}${localText.audio_url}?t=${audioKey}`;
+    
+    const link = document.createElement('a');
+    link.href = audioSrc;
+    link.download = `${localText.title}.mp3`;
+    link.click();
+  };
 
   const handleDelete = async () => {
-    if (!confirm('¿Estás seguro de eliminar este texto?')) return;
+    setIsDeleting(true);
     try { 
-      // Detener tracking si está reproduciendo
       if (isPlaying) {
         await stopPlayTracking(false);
       }
       await deleteText(localText.id); 
+      setShowDeleteModal(false);
       onUpdated(); 
     } catch (err) { 
       console.error(err); 
       alert('Error al eliminar texto'); 
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -287,7 +297,7 @@ useEffect(() => {
               <MessageCircle className="w-4 h-4 text-gray-400"/>
             </button>
             <button 
-              onClick={handleDelete} 
+              onClick={() => setShowDeleteModal(true)} 
               className="p-2 hover:bg-gray-900 rounded-lg transition" 
               title="Eliminar"
             >
@@ -398,6 +408,62 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Modal de confirmación de eliminación */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-black border border-gray-900 rounded-2xl w-full max-w-sm p-6 relative shadow-xl">
+            <button 
+              onClick={() => setShowDeleteModal(false)} 
+              className="absolute top-4 right-4 p-2 hover:bg-gray-900 rounded-lg transition"
+            >
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
+
+            <div className="text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold">Eliminar texto</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  ¿Estás seguro de eliminar "{localText.title}"?
+                </p>
+                {localText.audio_url && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    El audio asociado también será eliminado.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 border border-gray-800 rounded-lg hover:bg-gray-900 transition text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg transition text-sm font-medium flex items-center justify-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Eliminando...
+                    </>
+                  ) : (
+                    'Eliminar'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showShareModal && (
         <ShareTextModal 
           textId={localText.id} 
@@ -418,7 +484,6 @@ useEffect(() => {
           textTitle={localText.title}
           hasAudio={localText.audio_generated || !!localText.audio_url}
           onClose={() => setShowWhatsAppModal(false)}
-
         />
       )}
       {showGenerateModal && (

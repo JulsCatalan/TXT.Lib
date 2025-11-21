@@ -7,7 +7,6 @@ import { kapso } from '../config/kapso.js';
 const handleKapsoError = (error) => {
   console.error('Error enviando por Kapso:', error);
 
-  // Error de ventana de 24 horas
   if (error.raw?.error?.includes('24-hour window') || 
       error.message?.includes('24-hour window')) {
     return {
@@ -17,7 +16,6 @@ const handleKapsoError = (error) => {
     };
   }
 
-  // Error de número inválido
   if (error.raw?.error?.includes('invalid phone') || 
       error.code === 400) {
     return {
@@ -27,7 +25,6 @@ const handleKapsoError = (error) => {
     };
   }
 
-  // Error de audio no accesible
   if (error.raw?.error?.includes('unable to download') || 
       error.raw?.error?.includes('media')) {
     return {
@@ -37,7 +34,6 @@ const handleKapsoError = (error) => {
     };
   }
 
-  // Error de rate limit
   if (error.httpStatus === 429) {
     return {
       code: 'RATE_LIMIT',
@@ -46,12 +42,24 @@ const handleKapsoError = (error) => {
     };
   }
 
-  // Error genérico
   return {
     code: 'UNKNOWN',
     message: 'Error al enviar por WhatsApp. Intenta de nuevo más tarde.',
     userFriendly: false
   };
+};
+
+/* ========================================
+   HELPER: Obtener URL del audio (Supabase o legacy)
+======================================== */
+const getAudioUrl = (audioUrl) => {
+  // Si ya es URL completa (Supabase), usarla directo
+  if (audioUrl.startsWith('http')) {
+    return audioUrl;
+  }
+  // Si es relativa (legacy), agregar baseUrl
+  const baseUrl = process.env.BASE_URL || process.env.API_URL?.replace('/api', '') || 'http://localhost:3000';
+  return `${baseUrl}${audioUrl}`;
 };
 
 /* ========================================
@@ -66,7 +74,6 @@ export const sendAudio = async (req, res) => {
       return res.status(400).json({ error: 'text_id es requerido' });
     }
 
-    // Obtener texto y audio
     const { data: text, error: textError } = await supabase
       .from('texts')
       .select('id, title, audio_url')
@@ -100,9 +107,7 @@ export const sendAudio = async (req, res) => {
       targetPhone = to_phone;
     }
 
-    const baseUrl = process.env.BASE_URL || process.env.API_URL;
-    const audioUrl = `${baseUrl}${text.audio_url}`;
-
+    const audioUrl = getAudioUrl(text.audio_url);
     console.log('📱 Audio URL para WhatsApp:', audioUrl);
 
     const isDevelopment = process.env.NODE_ENV === 'development';
@@ -294,9 +299,7 @@ export const sendTextAndAudio = async (req, res) => {
       targetPhone = to_phone;
     }
 
-    const baseUrl = process.env.BASE_URL || process.env.API_URL?.replace('/api', '') || 'http://localhost:3000';
-    const audioUrl = `${baseUrl}${text.audio_url}`;
-
+    const audioUrl = getAudioUrl(text.audio_url);
     console.log('📱 Audio URL para WhatsApp:', audioUrl);
 
     let textMessage = `📝 *${text.title}*\n\n`;

@@ -171,14 +171,12 @@ export const generateAudio = async (req, res) => {
     const userId = req.user.id;
     const { id, gender } = req.body;
 
-    // Validar género
     if (gender && !['male', 'female'].includes(gender)) {
       return res.status(400).json({ 
         error: 'Género inválido. Usa "male" o "female"' 
       });
     }
 
-    // Obtener el texto
     const { data: text, error } = await supabase
       .from('texts')
       .select('*')
@@ -190,7 +188,7 @@ export const generateAudio = async (req, res) => {
       return res.status(404).json({ error: 'Texto no encontrado' });
     }
 
-    // Si ya tiene audio generado, devolverlo (o regenerar si cambió el género)
+    // Si ya tiene audio y no se pide regenerar
     if (text.audio_generated && text.audio_url && !gender) {
       return res.json({ 
         audio_url: text.audio_url, 
@@ -198,19 +196,19 @@ export const generateAudio = async (req, res) => {
       });
     }
 
-    // Generar audio con ElevenLabs y guardar en servidor
+    // Generar y subir a Supabase Storage
     const audioUrl = await elevenlabs_generateAudio({ 
       text: text.content, 
       textId: text.id, 
       userId,
-      gender: gender || 'female' // Por defecto femenino
+      gender: gender || 'female'
     });
 
     if (!audioUrl) {
       return res.status(500).json({ error: 'Error generando audio' });
     }
 
-    // Actualizar registro en la base de datos con la URL
+    // Guardar URL de Supabase en la DB
     const { data: updated, error: updateError } = await supabase
       .from('texts')
       .update({ 
