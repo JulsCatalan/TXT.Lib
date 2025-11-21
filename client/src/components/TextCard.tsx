@@ -67,20 +67,20 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   }, [localText.audio_url]);
 
   // Cargar src de audio cuando cambia
-  useEffect(() => {
-    if (audioRef.current && localText.audio_url) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
-      const newSrc = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
-      setAudioError(false);
-      audioRef.current.src = newSrc;
-      audioRef.current.load();
-    }
-  }, [localText.audio_url, audioKey]);
+useEffect(() => {
+  if (audioRef.current && localText.audio_url) {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+    const newSrc = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setAudioError(false);
+    audioRef.current.src = newSrc;
+    audioRef.current.load();
+  }
+}, [localText.audio_url, audioKey]);
 
   // Verificar si el texto ya es favorito al cargar la tarjeta
   useEffect(() => {
@@ -178,21 +178,21 @@ export default function TextCard({ text, onUpdated }: TextCardProps) {
   };
 
   const handleDownloadAudio = async () => {
-    if (!localText.audio_url) return;
-    
-    // Trackear descarga
-    try {
-      await trackAudioDownload(localText.id);
-    } catch (err) {
-      console.error('Error trackeando descarga:', err);
-    }
-    
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '');
-    const link = document.createElement('a');
-    link.href = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
-    link.download = `${localText.title}.mp3`;
-    link.click();
-  };
+  if (!localText.audio_url) return;
+  
+  // Trackear descarga
+  try {
+    await trackAudioDownload(localText.id);
+  } catch (err) {
+    console.error('Error trackeando descarga:', err);
+  }
+  
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || '';
+  const link = document.createElement('a');
+  link.href = `${baseUrl}${localText.audio_url}?t=${audioKey}`;
+  link.download = `${localText.title}.mp3`;
+  link.click();
+};
 
   const handleDelete = async () => {
     if (!confirm('¿Estás seguro de eliminar este texto?')) return;
